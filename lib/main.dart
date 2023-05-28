@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+//TODO: keyboard shortcuts only work when the field is active
+//TODO: Search should search across lists, grouped by lists, then j/k and enter to go to the task in the list or x to whatever
+//TODO: make look like terminal
+
 void main() {
   runApp(TodoListApp());
 }
@@ -28,6 +32,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
   List<String> todoList4 = [];
 
   int activeListIndex = 1;
+  String searchQuery = '';
 
   @override
   void initState() {
@@ -83,20 +88,40 @@ class _TodoListScreenState extends State<TodoListScreen> {
       if (activeListIndex < 4) {
         setState(() => activeListIndex++);
       }
+    } else if (event.logicalKey == LogicalKeyboardKey.keyU) {
+      setState(() => activeListIndex = 1);
+    } else if (event.logicalKey == LogicalKeyboardKey.keyT) {
+      setState(() => activeListIndex = 2);
     }
+  }
+
+  void _searchTasks(String query) {
+    setState(() {
+      searchQuery = query;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Todo List'),
+        title: Text('Todudester'),
       ),
       body: RawKeyboardListener(
         focusNode: FocusNode(),
         onKey: _handleKeyEvent,
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: TextField(
+                onChanged: _searchTasks,
+                decoration: InputDecoration(
+                  labelText: 'Search',
+                  prefixIcon: Icon(Icons.search),
+                ),
+              ),
+            ),
             Container(
               margin: EdgeInsets.all(10),
               child: Row(
@@ -145,8 +170,13 @@ class _TodoListScreenState extends State<TodoListScreen> {
               child: ListView.builder(
                 itemCount: _getList().length,
                 itemBuilder: (context, index) {
+                  final task = _getList()[index];
+                  if (searchQuery.isNotEmpty &&
+                      !task.toLowerCase().contains(searchQuery.toLowerCase())) {
+                    return Container();
+                  }
                   return ListTile(
-                    title: Text(_getList()[index]),
+                    title: Text(task),
                     trailing: IconButton(
                       icon: Icon(Icons.delete),
                       onPressed: () => _removeTask(index),
