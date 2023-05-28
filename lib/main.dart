@@ -1,20 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-//TODO: keyboard shortcuts only work when the field is active
-//TODO: Search should search across lists, grouped by lists, then j/k and enter to go to the task in the list or x to whatever
-//TODO: make look like terminal
-
 void main() {
-  runApp(TodoListApp());
+  runApp(TodudeApp());
 }
 
-class TodoListApp extends StatelessWidget {
+enum Mode { none, newTask, search, dialog }
+
+enum TodudeDialog { shortcuts, confirm }
+
+enum ListNames { urgent, today, shortTerm, longTerm }
+
+class TodudeApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Todo List',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData.dark().copyWith(
+        textTheme: ThemeData.dark().textTheme.copyWith(
+              bodyMedium: const TextStyle(
+                fontFamily: 'Andale Mono',
+                fontSize: 16,
+                color: Colors.white,
+              ),
+            ),
+      ),
       home: TodoListScreen(),
     );
   }
@@ -26,207 +36,143 @@ class TodoListScreen extends StatefulWidget {
 }
 
 class _TodoListScreenState extends State<TodoListScreen> {
-  List<String> todoList1 = [];
-  List<String> todoList2 = [];
-  List<String> todoList3 = [];
-  List<String> todoList4 = [];
+  List<List<Task>> _tasks = [[], [], [], []];
 
-  int activeListIndex = 1;
-  String searchQuery = '';
+  int _activeListIndex = 0;
+  int _activeTaskIndex = 0;
+
+  String _searchQuery = '';
+  Mode _activeMode = Mode.none;
+  TodudeDialog _activeDialog = TodudeDialog.shortcuts;
 
   @override
   void initState() {
     super.initState();
-    SystemChannels.textInput.invokeMethod('TextInput.show');
-    SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
   void _addTask(String task) {
-    switch (activeListIndex) {
-      case 1:
-        setState(() => todoList1.add(task));
-        break;
-      case 2:
-        setState(() => todoList2.add(task));
-        break;
-      case 3:
-        setState(() => todoList3.add(task));
-        break;
-      case 4:
-        setState(() => todoList4.add(task));
-        break;
-    }
+    setState(() => _tasks[_activeListIndex].add(Task(task: task)));
   }
 
   void _removeTask(int index) {
-    switch (activeListIndex) {
-      case 1:
-        setState(() => todoList1.removeAt(index));
-        break;
-      case 2:
-        setState(() => todoList2.removeAt(index));
-        break;
-      case 3:
-        setState(() => todoList3.removeAt(index));
-        break;
-      case 4:
-        setState(() => todoList4.removeAt(index));
-        break;
-    }
+    setState(() => _tasks[_activeListIndex].removeAt(index));
   }
 
   void _changeActiveList(int index) {
-    setState(() => activeListIndex = index);
-  }
-
-  void _handleKeyEvent(RawKeyEvent event) {
-    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      if (activeListIndex > 1) {
-        setState(() => activeListIndex--);
-      }
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      if (activeListIndex < 4) {
-        setState(() => activeListIndex++);
-      }
-    } else if (event.logicalKey == LogicalKeyboardKey.keyU) {
-      setState(() => activeListIndex = 1);
-    } else if (event.logicalKey == LogicalKeyboardKey.keyT) {
-      setState(() => activeListIndex = 2);
-    }
+    setState(() {
+      _activeListIndex = index;
+    });
   }
 
   void _searchTasks(String query) {
     setState(() {
-      searchQuery = query;
+      _searchQuery = query;
     });
+  }
+
+  List<Task> _getList() => _tasks[_activeListIndex];
+
+  void _handleKeyEvent(RawKeyEvent event) {
+    if (_activeMode == Mode.none &&
+            event.logicalKey == LogicalKeyboardKey.arrowUp ||
+        event.logicalKey == LogicalKeyboardKey.keyK) {
+      if (_activeTaskIndex > 0) {
+        setState(() => _activeTaskIndex--);
+      }
+    } else if (_activeMode == Mode.none &&
+            event.logicalKey == LogicalKeyboardKey.arrowDown ||
+        event.logicalKey == LogicalKeyboardKey.keyJ) {
+      if (_activeTaskIndex < _getList().length - 1) {
+        setState(() => _activeTaskIndex++);
+      }
+    } else if (_activeMode == Mode.none &&
+        event.logicalKey == LogicalKeyboardKey.keyX) {
+      final task = _getList()[_activeTaskIndex];
+      setState(() => task.isCompleted = !task.isCompleted);
+    } else if (event.isShiftPressed &&
+        event.logicalKey == LogicalKeyboardKey.slash) {
+      _showShortcutsDialog();
+    } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (_activeMode == Mode.dialog) {
+        Navigator.pop(context);
+      }
+      setState(() => _activeMode = Mode.none);
+    }
+  }
+
+  void _showShortcutsDialog() {
+    _activeMode = Mode.dialog;
+    _activeDialog = TodudeDialog.shortcuts;
+    showDialog<String>(
+      context: context,
+      builder: (BuildContext context) => const Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(8.0),
+          child: Text(
+              'Shit+\\ Keyboard shortcuts\n\n Esc end edit or close dialog\n\n / Search\n\n C new task\n\n Cmd Z/Ctrl Z Undo... '),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Todudester'),
+        title: const Text('todude'),
       ),
-      body: RawKeyboardListener(
-        focusNode: FocusNode(),
-        onKey: _handleKeyEvent,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextField(
-                onChanged: _searchTasks,
-                decoration: InputDecoration(
-                  labelText: 'Search',
-                  prefixIcon: Icon(Icons.search),
-                ),
-              ),
+      body: Column(
+        children: [
+          TextField(
+            onChanged: _searchTasks,
+            enabled: _activeMode == Mode.search,
+            style: const TextStyle(fontFamily: 'Courier'),
+            decoration: const InputDecoration(
+              labelText: '... # for tags',
+              prefixIcon: Icon(Icons.search),
             ),
-            Container(
-              margin: EdgeInsets.all(10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton(
-                    onPressed: () => _changeActiveList(1),
-                    style: ButtonStyle(
-                      backgroundColor: activeListIndex == 1
-                          ? MaterialStateProperty.all(Colors.blue)
-                          : null,
-                    ),
-                    child: Text('List 1'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => _changeActiveList(2),
-                    style: ButtonStyle(
-                      backgroundColor: activeListIndex == 2
-                          ? MaterialStateProperty.all(Colors.blue)
-                          : null,
-                    ),
-                    child: Text('List 2'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => _changeActiveList(3),
-                    style: ButtonStyle(
-                      backgroundColor: activeListIndex == 3
-                          ? MaterialStateProperty.all(Colors.blue)
-                          : null,
-                    ),
-                    child: Text('List 3'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => _changeActiveList(4),
-                    style: ButtonStyle(
-                      backgroundColor: activeListIndex == 4
-                          ? MaterialStateProperty.all(Colors.blue)
-                          : null,
-                    ),
-                    child: Text('List 4'),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
+          ),
+          RawKeyboardListener(
+            focusNode: FocusNode(),
+            onKey: _handleKeyEvent,
+            child: Expanded(
               child: ListView.builder(
                 itemCount: _getList().length,
                 itemBuilder: (context, index) {
                   final task = _getList()[index];
-                  if (searchQuery.isNotEmpty &&
-                      !task.toLowerCase().contains(searchQuery.toLowerCase())) {
+                  if (_searchQuery.isNotEmpty &&
+                      !task.task
+                          .toLowerCase()
+                          .contains(_searchQuery.toLowerCase())) {
                     return Container();
                   }
                   return ListTile(
-                    title: Text(task),
-                    trailing: IconButton(
-                      icon: Icon(Icons.delete),
-                      onPressed: () => _removeTask(index),
+                    leading: Checkbox(
+                      value: task.isCompleted,
+                      onChanged: (value) {
+                        setState(() => task.isCompleted = value ?? false);
+                      },
                     ),
+                    title: Text(
+                      task.task,
+                      style: const TextStyle(fontFamily: 'Courier'),
+                    ),
+                    tileColor:
+                        index == _activeTaskIndex ? Colors.grey[200] : null,
                   );
                 },
               ),
             ),
-            Container(
-              margin: EdgeInsets.all(10),
-              child: TextField(
-                onSubmitted: (task) {
-                  _addTask(task);
-                  // Clear the text field after submitting a task
-                  _textEditingController.clear();
-                },
-                decoration: InputDecoration(
-                  hintText: 'Add a task',
-                  suffixIcon: IconButton(
-                    icon: Icon(Icons.add),
-                    onPressed: () {
-                      _addTask(_textEditingController.text);
-                      // Clear the text field after adding a task
-                      _textEditingController.clear();
-                    },
-                  ),
-                ),
-                controller: _textEditingController,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  List<String> _getList() {
-    switch (activeListIndex) {
-      case 1:
-        return todoList1;
-      case 2:
-        return todoList2;
-      case 3:
-        return todoList3;
-      case 4:
-        return todoList4;
-      default:
-        return [];
-    }
-  }
+class Task {
+  String task;
+  bool isCompleted;
 
-  final TextEditingController _textEditingController = TextEditingController();
+  Task({required this.task, this.isCompleted = false});
 }
